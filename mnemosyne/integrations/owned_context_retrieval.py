@@ -13,11 +13,11 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-from mnemosyne.core.memory import Mnemosyne
+from mnemosyne.integrations.owned_readonly_bank import recall_owner_bank, ImmutableRecallError
 
 SCHEMA = "owned-mnemosyne-context-request-v1"
 RESULT_SCHEMA = "owned-mnemosyne-context-v1"
-READER = Path("/home/storage/781/4477781/user/webapp/bin/chatgpt-owned-context-reader")
+READER = None  # owner-injected absolute executable path
 REQUEST_ID = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.:-]{7,127}$")
 MAX_BYTES = 160000
 MAX_TEXT = 1800
@@ -50,13 +50,14 @@ def validate(request: Any):
         raise ContextBoundaryError("window outside 100-day bound")
     return rid, query, since.isoformat(), until.isoformat(), count
 
-def invoke_owned_reader(rid, query, since, until, count, reader=READER):
+def invoke_owned_reader(rid, query, since, until, count, reader=None):
+    reader = Path(reader or os.environ.get("MNEMOSYNE_OWNER_CONTEXT_READER", ""))
     if not reader.is_file() or reader.is_symlink() or not os.access(reader, os.X_OK):
         raise ContextBoundaryError("owned historical reader not admitted")
     request = {
         "schema": "chatgpt-owned-readonly-v1",
         "request_id": rid,
-        "target": "runtime:fasthost.powerpc_darwin_org",
+        "target": "runtime:" + os.environ.get("MNEMOSYNE_OWNER_RUNTIME_ID", ""),
         "tool": "session_context",
         "arguments": {"task": query, "since": since, "until": until, "limit": count},
     }
@@ -126,7 +127,7 @@ def _historical(packet, limit):
     return records
 
 def _derived(memory, query, limit):
-    found = memory.recall(query, top_k=limit)
+    found = recall_owner_bank(query, limit) if memory is None else memory.recall(query, top_k=limit)
     if not isinstance(found, list):
         raise ContextBoundaryError("invalid memory recall result")
     records = []
@@ -157,9 +158,7 @@ def _derived(memory, query, limit):
 
 def build_context(request, *, memory=None, historical_packet=None):
     rid, query, since, until, count = validate(request)
-    if memory is None:
-        memory = Mnemosyne(bank="architecture", session_id="owned-mnemosyne-context")
-    if getattr(memory, "bank", None) != "architecture":
+    if memory is not None and getattr(memory, "bank", None) != "architecture":
         raise ContextBoundaryError("cross-bank context denied")
     packet = historical_packet
     if packet is None:
@@ -168,7 +167,7 @@ def build_context(request, *, memory=None, historical_packet=None):
     derived = _derived(memory, query, count)
     return {
         "schema": RESULT_SCHEMA, "request_id": rid, "state": "READ_ONLY_CONTEXT",
-        "runtime_id": "fasthost.powerpc_darwin_org", "domain": "shared-architecture",
+        "runtime_id": os.environ.get("MNEMOSYNE_OWNER_RUNTIME_ID", ""), "domain": "shared-architecture",
         "historical_evidence_class": "HISTORICAL_MESSAGES_NOT_CURRENT_AUTHORITY",
         "derived_memory_authority": "DERIVED_CONTEXT_ONLY",
         "archive_index_at": packet.get("archive_index_generated_at"),
@@ -183,13 +182,13 @@ def build_context(request, *, memory=None, historical_packet=None):
 def main():
     try:
         raw = sys.stdin.buffer.read(4097)
-        if len(raw) > 4096 or os.getuid() != 2257347:
+        if len(raw) > 4096 or not os.environ.get("MNEMOSYNE_OWNER_UID", "").isdecimal() or os.getuid() != int(os.environ["MNEMOSYNE_OWNER_UID"]):
             raise ContextBoundaryError("request admission failed")
         result = build_context(json.loads(raw.decode("utf-8")))
         output = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
         if len(output.encode("utf-8")) > MAX_BYTES:
             raise ContextBoundaryError("response exceeds maximum size")
-    except (ContextBoundaryError, OSError, ValueError, TypeError):
+    except (ContextBoundaryError, ImmutableRecallError, OSError, ValueError, TypeError):
         print(json.dumps({"schema": RESULT_SCHEMA, "state": "BLOCKED", "reason": "ADMISSION_FAILED"}))
         return 2
     print(output)
