@@ -30,3 +30,5 @@ do not establish historical review authority or current runtime truth.
 Older public Git objects still contain host-specific labels from prior commits:
 a new public Git revision cannot expunge those objects. Treat remediation of
 previously published operational metadata as a distinct owner privacy task.
+
+Reader integrity now also validates a stored source/content SHA-256 and reconstructs the original canonical projection fingerprint with verified_source reset to false, then matches it to the atomic ingest receipt. This detects accidental or one-sided tampering. It does not defend against an adversary who can replace both the memory row and receipt, or independently attest the public Git origin at query time.

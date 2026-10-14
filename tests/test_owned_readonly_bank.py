@@ -20,7 +20,7 @@ class TestImmutableBankRecall(unittest.TestCase):
         c=sqlite3.connect(self.db)
         c.executescript("""
         CREATE TABLE working_memory(
-          id TEXT PRIMARY KEY,content TEXT,source TEXT,metadata_json TEXT,
+          id TEXT PRIMARY KEY,content TEXT,source TEXT,scope TEXT,metadata_json TEXT,
           superseded_by TEXT,valid_until TEXT,importance REAL);
         CREATE TABLE owned_architecture_ingest_receipts(
           bank TEXT,record_id TEXT,fingerprint TEXT,memory_id TEXT,
@@ -37,14 +37,25 @@ class TestImmutableBankRecall(unittest.TestCase):
             "authority":"DERIVED_CONTEXT_ONLY","verified_source":verified,
             "record_id":rid, "verification_method":"PINNED_LOCAL_GIT_BLOB",
             "bank":"architecture", "domain":"shared-architecture",
-            "source":{"ref":"git:Example/Owned/source.md","version":"a"*40},
+            "review_state":"reviewed_candidate",
+            "classification":"architecture_internal",
+            "source":{"ref":"git:Example/Owned/source.md","version":"a"*40,
+                      "sha256":"b"*64,
+                      "content_sha256":hashlib.sha256(text.encode()).hexdigest()},
         }
+        prior_meta=dict(meta)
+        prior_meta["verified_source"]=False
+        prior_meta.pop("verification_method",None)
+        original={"content":text,"source":"owned-architecture-projection",
+                  "scope":"global","metadata":prior_meta}
+        fingerprint=hashlib.sha256(json.dumps(original,sort_keys=True,ensure_ascii=False,
+                   separators=(",",":")).encode("utf-8")).hexdigest()
         c=sqlite3.connect(self.db)
-        c.execute("INSERT INTO working_memory VALUES (?,?,?,?,?,?,?)", (
-            rid,text,"owned-architecture-projection",json.dumps(meta),None,None,0.8))
+        c.execute("INSERT INTO working_memory VALUES (?,?,?,?,?,?,?,?)", (
+            rid,text,"owned-architecture-projection","global",json.dumps(meta),None,None,0.8))
         if receipt:
             c.execute("INSERT INTO owned_architecture_ingest_receipts VALUES (?,?,?,?,?)",
-             ("architecture",rid,"x"*64,rid,"PINNED_LOCAL_GIT_BLOB"))
+             ("architecture",rid,fingerprint,rid,"PINNED_LOCAL_GIT_BLOB"))
         c.commit();c.close()
     def snapshot(self):
         return {
@@ -85,6 +96,37 @@ class TestImmutableBankRecall(unittest.TestCase):
         with self.assertRaises(ImmutableRecallError):
             self.recall()
         self.assertEqual(self.snapshot(),before)
+    def test_changed_memory_content_does_not_pass_receipt(self):
+        self.add()
+        conn=sqlite3.connect(self.db)
+        conn.execute("UPDATE working_memory SET content=? WHERE id=?",
+                     ("Synthetic architecture continuity modified", "r1"))
+        conn.commit();conn.close()
+        before=self.snapshot()
+        self.assertEqual(self.recall(),[])
+        self.assertEqual(self.snapshot(),before)
+    def test_changed_kind_does_not_pass_receipt(self):
+        self.add()
+        conn=sqlite3.connect(self.db)
+        meta=json.loads(conn.execute("SELECT metadata_json FROM working_memory").fetchone()[0])
+        meta["kind"]="correction"
+        conn.execute("UPDATE working_memory SET metadata_json=? WHERE id=?", (json.dumps(meta),"r1"))
+        conn.commit();conn.close()
+        self.assertEqual(self.recall(),[])
+    def test_changed_ingest_receipt_rejected(self):
+        self.add()
+        conn=sqlite3.connect(self.db)
+        conn.execute("UPDATE owned_architecture_ingest_receipts SET fingerprint=? WHERE record_id=?",("0"*64,"r1"))
+        conn.commit();conn.close()
+        self.assertEqual(self.recall(),[])
+    def test_content_digest_mismatch_rejected(self):
+        self.add()
+        conn=sqlite3.connect(self.db)
+        meta=json.loads(conn.execute("SELECT metadata_json FROM working_memory").fetchone()[0])
+        meta["source"]["content_sha256"]="f"*64
+        conn.execute("UPDATE working_memory SET metadata_json=? WHERE id=?", (json.dumps(meta),"r1"))
+        conn.commit();conn.close()
+        self.assertEqual(self.recall(),[])
     def test_missing_owner_config_fails_closed(self):
         with patch.dict(os.environ,{"MNEMOSYNE_OWNER_BANK_DB":"",
                                   "MNEMOSYNE_OWNER_UID":""}):
