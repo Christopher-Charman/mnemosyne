@@ -79,6 +79,12 @@ class ProjectionTests(unittest.TestCase):
         with self.assertRaises(AdmissionError):
             plan_projection([a])
 
+    def test_reject_non_string_kind(self):
+        a = fixture()
+        a["kind"] = ["decision"]
+        with self.assertRaises(AdmissionError):
+            plan_projection([a])
+
     def test_reject_sensitive_classification(self):
         a = fixture()
         a["classification"] = "personal"

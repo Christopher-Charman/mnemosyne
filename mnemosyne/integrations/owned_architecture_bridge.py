@@ -101,7 +101,7 @@ def _normalise(raw: Any, bank: str) -> dict[str, Any]:
     rid = _text(raw["record_id"], "record_id", 128)
     if not _ID.fullmatch(rid):
         raise AdmissionError("invalid record_id")
-    if raw["kind"] not in KINDS:
+    if not isinstance(raw["kind"], str) or raw["kind"] not in KINDS:
         raise AdmissionError("unsupported record kind")
     if raw["domain"] != DOMAIN or raw["bank"] != bank:
         raise AdmissionError("domain/bank mismatch")
