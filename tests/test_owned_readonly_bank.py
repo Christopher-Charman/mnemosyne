@@ -1,4 +1,5 @@
 import hashlib
+from datetime import datetime, timezone, timedelta
 import json
 import os
 import pathlib
@@ -32,7 +33,7 @@ class TestImmutableBankRecall(unittest.TestCase):
            "MNEMOSYNE_OWNER_UID":str(os.getuid()),
         }
     def add(self, rid="r1", text="Synthetic architecture continuity approved content",
-            verified=True, receipt=True):
+            verified=True, receipt=True, valid_until=None):
         meta={
             "authority":"DERIVED_CONTEXT_ONLY","verified_source":verified,
             "record_id":rid, "verification_method":"PINNED_LOCAL_GIT_BLOB",
@@ -52,7 +53,7 @@ class TestImmutableBankRecall(unittest.TestCase):
                    separators=(",",":")).encode("utf-8")).hexdigest()
         c=sqlite3.connect(self.db)
         c.execute("INSERT INTO working_memory VALUES (?,?,?,?,?,?,?,?)", (
-            rid,text,"owned-architecture-projection","global",json.dumps(meta),None,None,0.8))
+            rid,text,"owned-architecture-projection","global",json.dumps(meta),None,valid_until,0.8))
         if receipt:
             c.execute("INSERT INTO owned_architecture_ingest_receipts VALUES (?,?,?,?,?)",
              ("architecture",rid,fingerprint,rid,"PINNED_LOCAL_GIT_BLOB"))
@@ -127,6 +128,46 @@ class TestImmutableBankRecall(unittest.TestCase):
         conn.execute("UPDATE working_memory SET metadata_json=? WHERE id=?", (json.dumps(meta),"r1"))
         conn.commit();conn.close()
         self.assertEqual(self.recall(),[])
+
+    def test_expired_aware_utc_same_date_is_not_recalled(self):
+        now=datetime.now(timezone.utc)
+        expired=now.replace(hour=0,minute=0,second=0,microsecond=0)
+        self.add(valid_until=expired.isoformat())
+        before=self.snapshot()
+        self.assertEqual(self.recall(),[])
+        self.assertEqual(self.snapshot(),before)
+
+    def test_expired_offset_bearing_datetime_is_not_recalled(self):
+        expired=datetime.now(timezone.utc)-timedelta(hours=1)
+        date=expired.astimezone(timezone(timedelta(hours=8))).isoformat()
+        self.add(valid_until=date)
+        before=self.snapshot()
+        self.assertEqual(self.recall(),[])
+        self.assertEqual(self.snapshot(),before)
+
+    def test_future_utc_and_offset_datetimes_are_recalled(self):
+        future=datetime.now(timezone.utc)+timedelta(days=2)
+        self.add(rid="future-utc",valid_until=future.isoformat())
+        self.add(rid="future-z",valid_until=future.isoformat().replace("+00:00","Z"))
+        self.add(rid="future-offset",valid_until=future.astimezone(timezone(-timedelta(hours=7))).isoformat())
+        before=self.snapshot()
+        found=self.recall()
+        self.assertEqual(len(found),3)
+        self.assertEqual(self.snapshot(),before)
+
+    def test_invalid_non_null_expiry_fails_closed(self):
+        self.add(valid_until="not-an-ISO-time")
+        before=self.snapshot()
+        self.assertEqual(self.recall(),[])
+        self.assertEqual(self.snapshot(),before)
+
+    def test_expired_naive_sqlite_timestamp_is_not_recalled(self):
+        expired=datetime.now(timezone.utc)-timedelta(days=1)
+        self.add(valid_until=expired.strftime("%Y-%m-%d %H:%M:%S"))
+        before=self.snapshot()
+        self.assertEqual(self.recall(),[])
+        self.assertEqual(self.snapshot(),before)
+
     def test_missing_owner_config_fails_closed(self):
         with patch.dict(os.environ,{"MNEMOSYNE_OWNER_BANK_DB":"",
                                   "MNEMOSYNE_OWNER_UID":""}):

@@ -42,7 +42,7 @@ def recall_owner_bank(query: str, limit: int) -> list[dict]:
             "INNER JOIN owned_architecture_ingest_receipts AS r ON r.memory_id=w.id "
             "WHERE w.source='owned-architecture-projection' "
             "AND w.superseded_by IS NULL "
-            "AND (w.valid_until IS NULL OR w.valid_until > CURRENT_TIMESTAMP) "
+            "AND (w.valid_until IS NULL OR julianday(w.valid_until) > julianday('now')) "
             "AND r.bank='architecture' "
             "ORDER BY w.importance DESC,w.id ASC LIMIT ?", (_MAX_SCAN,)
         ).fetchall()
