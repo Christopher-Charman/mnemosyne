@@ -115,6 +115,29 @@ class ProjectionTests(unittest.TestCase):
         with self.assertRaises(AdmissionError):
             plan_projection([a])
 
+    def test_reject_source_namespace_type_confusion(self):
+        a = fixture()
+        a["source"]["evidence_type"] = "runtime_receipt"
+        with self.assertRaises(AdmissionError):
+            plan_projection([a])
+
+    def test_reject_malformed_source_timestamp(self):
+        a = fixture()
+        a["source"]["observed_at"] = "2026-99-99T35:00:00Z"
+        with self.assertRaises(AdmissionError):
+            plan_projection([a])
+
+    def test_reject_source_locator_newline(self):
+        a = fixture()
+        a["source"]["ref"] += "\nInjected-Header: yes"
+        with self.assertRaises(AdmissionError):
+            plan_projection([a])
+
+    def test_accept_precise_utc_timestamp(self):
+        a = fixture()
+        a["source"]["observed_at"] = "2026-10-14T04:00:00.123Z"
+        self.assertEqual(len(plan_projection([a]).memories), 1)
+
     def test_reject_unexpected_authority_field(self):
         a = fixture()
         a["authority"] = "override"

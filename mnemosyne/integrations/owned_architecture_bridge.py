@@ -13,6 +13,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -28,6 +29,15 @@ _ALLOWED_SOURCE_PREFIXES = ("library:/", "git:", "archive:", "runtime:")
 _MAX_CONTENT = 8192
 _MAX_RECORDS = 256
 _MAX_LINE = 32768
+_SOURCE_TYPES = {
+    "library:/": "canonical_document",
+    "git:": "git_blob",
+    "archive:": "archive_excerpt",
+    "runtime:": "runtime_receipt",
+}
+_UTC_TIMESTAMP = re.compile(
+    r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?Z$"
+)
 
 
 class AdmissionError(ValueError):
@@ -72,14 +82,23 @@ def _source(raw: Any, content: str) -> dict[str, str]:
     ref = _text(raw["ref"], "source.ref")
     if not ref.startswith(_ALLOWED_SOURCE_PREFIXES):
         raise AdmissionError("source.ref needs an explicit namespace")
+    if ref != ref.strip() or any(char in ref for char in "\r\n\t"):
+        raise AdmissionError("source.ref must be a single canonical locator")
     version = _text(raw["version"], "source.version", 256)
     observed_at = _text(raw["observed_at"], "source.observed_at", 64)
-    if not observed_at.endswith("Z") or "T" not in observed_at:
-        raise AdmissionError("source.observed_at must be UTC ISO-like time")
+    if not _UTC_TIMESTAMP.fullmatch(observed_at):
+        raise AdmissionError("source.observed_at requires a full UTC timestamp")
+    try:
+        datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError:
+        raise AdmissionError("source.observed_at is not a valid calendar date") from None
     evidence_type = _text(raw["evidence_type"], "source.evidence_type", 96)
-    if evidence_type not in {"canonical_document", "git_blob", "archive_excerpt",
-                             "runtime_receipt"}:
-        raise AdmissionError("unsupported evidence_type")
+    expected_type = next(
+        (kind for prefix, kind in _SOURCE_TYPES.items() if ref.startswith(prefix)),
+        None,
+    )
+    if evidence_type != expected_type:
+        raise AdmissionError("source.ref namespace and evidence_type mismatch")
     for label in ("sha256", "content_sha256"):
         if not isinstance(raw[label], str) or not _SHA256.fullmatch(raw[label]):
             raise AdmissionError(f"source.{label} requires lowercase SHA-256")
