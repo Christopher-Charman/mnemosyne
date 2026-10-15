@@ -42,6 +42,14 @@ class ReviewedSourcePreviewTests(unittest.TestCase):
         s=replace(self.s, ref=ref, version=ver)
         r=replace(self.r, source_ref=ref,source_version=ver)
         self.assertEqual(self.plan(i,s,r)["count"],1)
+    def test_forged_obsidian_version_denied(self):
+        ref="obsidian:Memory/Synthetic.md"
+        wrong="sha256:"+"0"*64
+        item=replace(self.i,source_ref=ref)
+        source=replace(self.s,ref=ref,version=wrong)
+        review=replace(self.r,source_ref=ref,source_version=wrong)
+        with self.assertRaises(AdmissionError):
+            self.plan(item,source,review)
     def test_source_byte_drift_denied(self):
         with self.assertRaises(AdmissionError):
             self.plan(source=replace(self.s,raw=self.raw+b"changed"))

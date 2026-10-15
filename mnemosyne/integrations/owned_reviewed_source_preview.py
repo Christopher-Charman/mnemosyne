@@ -123,6 +123,8 @@ def preview(selections: list[Selection], *, source_reader: Callable,
         if item.excerpt not in contents:
             raise AdmissionError("excerpt not verbatim")
         full_hash = hashlib.sha256(source.raw).hexdigest()
+        if kind == "reviewed_note" and source.version != "sha256:" + full_hash:
+            raise AdmissionError("Obsidian immutable version differs from note bytes")
         excerpt_hash = hashlib.sha256(item.excerpt.encode("utf-8")).hexdigest()
         observed = utc(source.observed_at)
         reviewed = utc(review.reviewed_at)

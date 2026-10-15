@@ -19,3 +19,5 @@ No live SQLite importer or alternate mutation transport is introduced. Current
 Mnemosyne PinnedGitVerifier remains Git-only. Live owner ingestion, non-Git
 model presentation, reviewed source adapters and cross-device sync remain OFF
 until separate user-owned destination controls and canaries are accepted.
+
+Obsidian SHA-256 version must exactly match independently read full note bytes.
