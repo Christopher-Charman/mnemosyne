@@ -1,0 +1,32 @@
+name: Owned Mnemosyne read-only contracts
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/owned-readonly-contract.yml"
+      - "mnemosyne/integrations/**"
+      - "tests/test_owned_*.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  readonly-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run deterministic zero-dependency source tests
+        env:
+          PYTHONPATH: .
+          PYTHONNOUSERSITE: "1"
+          MNEMOSYNE_NO_EMBEDDINGS: "1"
+          MNEMOSYNE_EMBEDDINGS_VIA_API: "0"
+        run: |
+          python -S -m unittest discover -s tests -p test_owned_architecture_bridge.py -v
+          python -S -m unittest discover -s tests -p test_owned_readonly_bank.py -v
+          python -S -m unittest discover -s tests -p test_owned_context_retrieval.py -v
+          python -S -m unittest discover -s tests -p test_owned_model_context.py -v
