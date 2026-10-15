@@ -46,7 +46,7 @@ def recall_owner_bank(query: str, limit: int) -> list[dict]:
             "AND r.bank='architecture' "
             "ORDER BY w.importance DESC,w.id ASC LIMIT ?", (_MAX_SCAN,)
         ).fetchall()
-    except sqlite3.DatabaseError as ex:
+    except sqlite3.DatabaseError:
         raise ImmutableRecallError("read-only bank schema/transaction unavailable") from None
     finally:
         if "connection" in locals():

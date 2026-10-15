@@ -1,5 +1,4 @@
 """Synthetic contract tests for read-only model-visible architecture context."""
-import copy
 import unittest
 from mnemosyne.integrations.owned_model_context import build_context, validate, ModelContextError
 

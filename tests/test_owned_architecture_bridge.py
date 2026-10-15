@@ -1,12 +1,11 @@
 """Offline admission regressions; no Mnemosyne DB, network, or credentials used."""
 
 import hashlib
-import io
 import json
 import unittest
 
 from mnemosyne.integrations.owned_architecture_bridge import (
-    AdmissionError, plan_projection, preview_jsonl, main,
+    AdmissionError, plan_projection, preview_jsonl,
 )
 
 

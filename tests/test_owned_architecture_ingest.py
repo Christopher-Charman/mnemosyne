@@ -1,5 +1,4 @@
 """Synthetic on-host regressions for pinned Git evidence and atomic ingest."""
-import copy
 import hashlib
 import os
 import pathlib

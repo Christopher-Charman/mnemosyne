@@ -84,7 +84,7 @@ def _source(raw: Any, content: str) -> dict[str, str]:
         raise AdmissionError("source.ref needs an explicit namespace")
     if ref != ref.strip() or any(char in ref for char in "\r\n\t"):
         raise AdmissionError("source.ref must be a single canonical locator")
-    version = _text(raw["version"], "source.version", 256)
+    _text(raw["version"], "source.version", 256)
     observed_at = _text(raw["observed_at"], "source.observed_at", 64)
     if not _UTC_TIMESTAMP.fullmatch(observed_at):
         raise AdmissionError("source.observed_at requires a full UTC timestamp")
