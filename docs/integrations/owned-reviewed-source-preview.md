@@ -21,3 +21,14 @@ model presentation, reviewed source adapters and cross-device sync remain OFF
 until separate user-owned destination controls and canaries are accepted.
 
 Obsidian SHA-256 version must exactly match independently read full note bytes.
+
+## Obsidian vault source-reader candidate
+
+The owner-bound read_vault_note function retrieves only one explicit Markdown
+note from an owner-pinned vault. File-descriptor based path traversal, no-follow
+flags, UID and mode checks, hardlink rejection, 64 KiB bound, stable before/
+after fstat checks, UTF-8 validation and whole-file SHA-256 limit the read.
+Tests use disposable synthetic vaults; no live vault content was accessed.
+The caller must still independently authenticate current vault provenance and
+a distinct review-register decision. Note front matter or Canvas promotion
+alone does not establish that decision. No live ingestion or sync.
