@@ -74,6 +74,8 @@ def read_vault_note(ref: str, *, vault_root: Path, owner_uid: int) -> SourceRead
         return SourceRead(ref=ref,version="sha256:"+hashlib.sha256(payload).hexdigest(),
             raw=payload,observed_at=datetime.now(timezone.utc).replace(microsecond=0)
             .strftime("%Y-%m-%dT%H:%M:%SZ"))
+    except AdmissionError:
+        raise
     except (OSError,TypeError,ValueError):
         raise AdmissionError("trusted vault source read denied") from None
     finally:

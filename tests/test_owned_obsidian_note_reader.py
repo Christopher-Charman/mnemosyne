@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 from mnemosyne.integrations.owned_architecture_bridge import AdmissionError
 from mnemosyne.integrations.owned_obsidian_note_reader import read_vault_note
+from mnemosyne.integrations.owned_reviewed_source_preview import Selection, ReviewRead, preview
 
 class NoteReaderTests(unittest.TestCase):
     def setUp(self):
@@ -44,6 +45,25 @@ class NoteReaderTests(unittest.TestCase):
             with self.assertRaisesRegex(AdmissionError,"POSIX"):
                 self.read()
 
+    def test_owner_vault_read_into_reviewed_preview(self):
+        source=self.read()
+        excerpt="Synthetic reviewed fact"
+        self.assertIn(excerpt,source.raw.decode("utf-8"))
+        item=Selection("review.reader.synthetic.001","decision",self.ref,
+                       "review.reader.ticket.001",excerpt)
+        review=ReviewRead(item.review_id,self.ref,source.version,
+                          hashlib.sha256(source.raw).hexdigest(),
+                          hashlib.sha256(excerpt.encode()).hexdigest(),
+                          "APPROVED","architecture_internal","architecture",
+                          "reviewer.synthetic.001",source.observed_at)
+        receipt=preview([item],source_reader=lambda ref:self.read(ref=ref),
+                        review_reader=lambda rid:review)
+        self.assertEqual(receipt["writes"],0)
+        self.assertEqual(receipt["count"],1)
+        self.assertNotIn(excerpt,str(receipt))
+        self.assertTrue(source.version.startswith("sha256:"))
+        self.assertTrue(source.observed_at.endswith("Z"))
+
     def test_wrong_owner_fails(self):
         with self.assertRaises(AdmissionError):self.read(owner_uid=os.getuid()+1)
     def test_traversal_and_hidden_denied(self):
@@ -63,25 +83,30 @@ class NoteReaderTests(unittest.TestCase):
         with self.assertRaises(AdmissionError):self.read(vault_root=self.root/"Linked")
     def test_untrusted_permissions_denied(self):
         os.chmod(self.dir,0o777)
-        with self.assertRaises(AdmissionError):self.read()
+        with self.assertRaisesRegex(AdmissionError,"vault owner/type/mode mismatch"):self.read()
         os.chmod(self.dir,0o700)
         os.chmod(self.file,0o666)
-        with self.assertRaises(AdmissionError):self.read()
+        with self.assertRaisesRegex(AdmissionError,"vault owner/type/mode mismatch"):self.read()
     def test_empty_and_oversize_denied(self):
         for data in (b"",b"x"*65537):
             self.file.write_bytes(data)
-            with self.assertRaises(AdmissionError):self.read()
+            with self.assertRaisesRegex(AdmissionError,"oversize, empty, or linked note"):self.read()
     def test_fifo_and_hardlink_denied(self):
         self.file.unlink()
         os.mkfifo(self.file,0o600)
         with self.assertRaises(AdmissionError):self.read()
         self.file.unlink()
         self.file.write_bytes(b"synthetic")
+        os.chmod(self.file,0o600)
+        self.assertEqual(self.read().raw,b"synthetic")
         (self.dir/"Hardlink.md").hardlink_to(self.file)
-        with self.assertRaises(AdmissionError):self.read()
+        with self.assertRaisesRegex(AdmissionError,"oversize, empty, or linked note"):self.read()
     def test_encoding_denied(self):
         self.file.write_bytes(bytes([255,254]))
-        with self.assertRaises(AdmissionError):self.read()
+        with self.assertRaisesRegex(AdmissionError,"non-UTF8 note"):self.read()
+    def test_max_size_accepted(self):
+        self.file.write_bytes(b"x"*65536)
+        self.assertEqual(len(self.read().raw),65536)
     def test_immutable_digest_tracks_revision(self):
         old=self.read().version
         self.file.write_bytes(b"changed")

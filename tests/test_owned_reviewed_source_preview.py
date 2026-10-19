@@ -15,7 +15,7 @@ def stamp(delta=0):
 class ReviewedSourcePreviewTests(unittest.TestCase):
     def setUp(self):
         self.line="Approved synthetic architecture note"
-        self.raw=("# Fixture\\n"+self.line+"\\n").encode()
+        self.raw=("# Fixture\n"+self.line+"\n").encode()
         self.i=Selection("review.record.001", "decision",
             "library:/Architecture/Synthetic.md", "review.ticket.001", self.line)
         self.s=SourceRead(self.i.source_ref, "v3", self.raw,stamp())
@@ -77,7 +77,9 @@ class ReviewedSourcePreviewTests(unittest.TestCase):
         for field,value in [("source_version","v2"),("bank","evenio"),
                             ("review_id","wrong.review.001"),
                             ("classification","personal_private"),
-                            ("reviewer","")]:
+                            ("reviewer",""),("excerpt_sha256","0"*64),
+            ("source_sha256","0"*64),
+            ("source_ref","library:/Architecture/Other.md")]:
             with self.subTest(field=field),self.assertRaises(AdmissionError):
                 self.plan(review=replace(self.r,**{field:value}))
     def test_no_forged_excerpt(self):
