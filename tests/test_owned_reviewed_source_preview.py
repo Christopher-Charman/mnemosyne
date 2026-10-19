@@ -35,6 +35,22 @@ class ReviewedSourcePreviewTests(unittest.TestCase):
         self.assertEqual(result["count"],1)
         self.assertEqual(result["source_admission"],"PREVIEW_ONLY_UNBOUND_CALLER")
         self.assertNotIn(self.line,str(result))
+    def test_library_paths_with_internal_spaces(self):
+        ref="library:/Architecture Control Plane/Synthetic Decision.md"
+        item=replace(self.i,source_ref=ref)
+        source=replace(self.s,ref=ref)
+        review=replace(self.r,source_ref=ref)
+        self.assertEqual(self.plan(item,source,review)["count"],1)
+
+    def test_nonstring_source_ref_rejected_before_provider_io(self):
+        calls=[]
+        for ref in (None,5,[],{}):
+            with self.subTest(ref=ref), self.assertRaises(AdmissionError):
+                preview([replace(self.i,source_ref=ref)],
+                    source_reader=lambda x:calls.append("source"),
+                    review_reader=lambda x:calls.append("review"))
+        self.assertEqual(calls,[])
+
     def test_obsidian_digest_preview(self):
         ref="obsidian:Memory/Synthetic.md"
         ver="sha256:"+hashlib.sha256(self.raw).hexdigest()

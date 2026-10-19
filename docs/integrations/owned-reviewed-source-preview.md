@@ -38,3 +38,7 @@ re-read current source bytes and current review decision for every invocation.
 Invalid selection kinds/locators are rejected before provider calls; provider
 exception details are redacted. This freshness bound does not make a source
 reader or review record independently authenticated.
+
+Paths with internal spaces are valid; control characters and traversal remain
+rejected. Obsidian vault reads fail closed on systems lacking the required
+secure POSIX file-descriptor flags, rather than failing at module import.

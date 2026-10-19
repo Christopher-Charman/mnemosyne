@@ -80,7 +80,7 @@ def source_kind(ref: str, version: str) -> str:
         raise AdmissionError("source namespace not admitted")
     if (not name or name.startswith("/") or "\\" in name
         or any(x in {"", ".", ".."} for x in name.split("/"))
-        or any(ord(c) < 33 for c in name)
+        or any(ord(c) < 32 or ord(c) == 127 for c in name)
         or not isinstance(version, str) or not valid.fullmatch(version)):
         raise AdmissionError("noncanonical source path/version")
     return kind
@@ -107,7 +107,8 @@ def preview(selections: list[Selection], *, source_reader: Callable,
             or not isinstance(item.review_id, str) or not _ID.fullmatch(item.review_id)
             or item.record_id in ids or item.review_id in review_ids
             or not isinstance(item.excerpt, str) or not 1 <= len(item.excerpt) <= 1200
-            or not isinstance(item.kind, str) or item.kind not in KINDS):
+            or not isinstance(item.kind, str) or item.kind not in KINDS
+            or not isinstance(item.source_ref, str)):
             raise AdmissionError("invalid selection identity/content")
         # Validate the untrusted locator before touching either bound provider.
         source_kind(item.source_ref, "v1" if item.source_ref.startswith("library:/")

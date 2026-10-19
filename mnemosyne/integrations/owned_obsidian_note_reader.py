@@ -10,8 +10,15 @@ from mnemosyne.integrations.owned_architecture_bridge import AdmissionError
 from mnemosyne.integrations.owned_reviewed_source_preview import SourceRead
 
 MAX_NOTE = 65536
-DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+def _secure_platform() -> bool:
+    return (os.name == "posix" and hasattr(os, "getuid")
+            and all(hasattr(os, key) for key in
+                    ("O_DIRECTORY", "O_NOFOLLOW", "O_CLOEXEC", "O_NONBLOCK")))
+
+DIR_FLAGS = (os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+             | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0))
+FILE_FLAGS = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+              | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NONBLOCK", 0))
 
 def _check_owner(st: os.stat_result, uid: int, *, directory: bool) -> None:
     valid = stat.S_ISDIR(st.st_mode) if directory else stat.S_ISREG(st.st_mode)
@@ -24,12 +31,14 @@ def _parts(ref: str) -> list[str]:
     parts=ref[len("obsidian:"):].split("/")
     if (len(parts)>32 or not parts[-1].endswith(".md")
         or any(not p or p in (".","..") or p.startswith(".") or chr(92) in p
-               or any(ord(c)<33 for c in p) for p in parts)):
+               or any(ord(c)<32 or ord(c)==127 for c in p) for p in parts)):
         raise AdmissionError("noncanonical vault path")
     return parts
 
 def read_vault_note(ref: str, *, vault_root: Path, owner_uid: int) -> SourceRead:
     """A source snapshot, not an authenticated reviewer approval."""
+    if not _secure_platform():
+        raise AdmissionError("secure POSIX vault reader unavailable")
     if type(owner_uid) is not int or owner_uid<0:
         raise AdmissionError("explicit filesystem owner required")
     parts=_parts(ref)

@@ -4,6 +4,7 @@ import tempfile
 import pathlib
 import hashlib
 import unittest
+from unittest.mock import patch
 from mnemosyne.integrations.owned_architecture_bridge import AdmissionError
 from mnemosyne.integrations.owned_obsidian_note_reader import read_vault_note
 
@@ -29,6 +30,20 @@ class NoteReaderTests(unittest.TestCase):
         self.assertEqual(snap.raw,original)
         self.assertEqual(snap.version,"sha256:"+hashlib.sha256(original).hexdigest())
         self.assertEqual(self.file.read_bytes(),original)
+    def test_note_paths_with_internal_spaces(self):
+        directory=self.root/"Memory Notes"
+        directory.mkdir(mode=0o700)
+        note=directory/"Design Notes.md"
+        note.write_bytes(b"synthetic note")
+        os.chmod(note,0o600)
+        response=self.read(ref="obsidian:Memory Notes/Design Notes.md")
+        self.assertEqual(response.raw,b"synthetic note")
+
+    def test_unsupported_platform_fails_closed_without_open(self):
+        with patch("mnemosyne.integrations.owned_obsidian_note_reader._secure_platform",return_value=False):
+            with self.assertRaisesRegex(AdmissionError,"POSIX"):
+                self.read()
+
     def test_wrong_owner_fails(self):
         with self.assertRaises(AdmissionError):self.read(owner_uid=os.getuid()+1)
     def test_traversal_and_hidden_denied(self):
