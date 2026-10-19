@@ -86,17 +86,10 @@ def source_kind(ref: str, version: str) -> str:
     return kind
 
 
-def preview(selections: list[Selection], *, source_reader: Callable,
-            review_reader: Callable) -> dict:
-    """Return no-content receipt; never accepts approval from candidate input.
-
-    The separately owned caller MUST bind both readers to independent current
-    authenticated sources and attested review registers. This helper cannot do it.
-    """
+def validate_selections(selections: list[Selection]) -> None:
+    """Preflight every candidate before any independent provider is contacted."""
     if not isinstance(selections, list) or not 1 <= len(selections) <= 8:
         raise AdmissionError("selection bound")
-    if not callable(source_reader) or not callable(review_reader):
-        raise AdmissionError("independent owner readers required")
     # Preflight the *complete* batch before any provider read. An invalid later
     # selection must not disclose even a valid earlier source to a reader.
     ids = set()
@@ -115,6 +108,19 @@ def preview(selections: list[Selection], *, source_reader: Callable,
                     else "sha256:" + "0" * 64)
         ids.add(item.record_id)
         review_ids.add(item.review_id)
+
+
+
+def preview(selections: list[Selection], *, source_reader: Callable,
+            review_reader: Callable) -> dict:
+    """Return no-content receipt; never accepts approval from candidate input.
+
+    The separately owned caller MUST bind both readers to independent current
+    authenticated sources and attested review registers. This helper cannot do it.
+    """
+    validate_selections(selections)
+    if not callable(source_reader) or not callable(review_reader):
+        raise AdmissionError("independent owner readers required")
 
     records = []
     for item in selections:
@@ -171,5 +177,5 @@ def preview(selections: list[Selection], *, source_reader: Callable,
         })
     receipt = plan_projection(records, bank="architecture").receipt()
     receipt["source_admission"] = "PREVIEW_ONLY_UNBOUND_CALLER"
-    receipt["review_count"] = len(review_ids)
+    receipt["review_count"] = len(selections)
     return receipt
