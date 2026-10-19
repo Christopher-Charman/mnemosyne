@@ -97,7 +97,8 @@ def preview(selections: list[Selection], *, source_reader: Callable,
         raise AdmissionError("selection bound")
     if not callable(source_reader) or not callable(review_reader):
         raise AdmissionError("independent owner readers required")
-    records = []
+    # Preflight the *complete* batch before any provider read. An invalid later
+    # selection must not disclose even a valid earlier source to a reader.
     ids = set()
     review_ids = set()
     for item in selections:
@@ -110,9 +111,13 @@ def preview(selections: list[Selection], *, source_reader: Callable,
             or not isinstance(item.kind, str) or item.kind not in KINDS
             or not isinstance(item.source_ref, str)):
             raise AdmissionError("invalid selection identity/content")
-        # Validate the untrusted locator before touching either bound provider.
         source_kind(item.source_ref, "v1" if item.source_ref.startswith("library:/")
                     else "sha256:" + "0" * 64)
+        ids.add(item.record_id)
+        review_ids.add(item.review_id)
+
+    records = []
+    for item in selections:
         try:
             source = source_reader(item.source_ref)
             review = review_reader(item.review_id)
@@ -164,8 +169,6 @@ def preview(selections: list[Selection], *, source_reader: Callable,
             "sha256": full_hash, "content_sha256": excerpt_hash,
             "observed_at": source.observed_at, "evidence_type": kind},
         })
-        ids.add(item.record_id)
-        review_ids.add(item.review_id)
     receipt = plan_projection(records, bank="architecture").receipt()
     receipt["source_admission"] = "PREVIEW_ONLY_UNBOUND_CALLER"
     receipt["review_count"] = len(review_ids)

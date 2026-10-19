@@ -42,3 +42,6 @@ reader or review record independently authenticated.
 Paths with internal spaces are valid; control characters and traversal remain
 rejected. Obsidian vault reads fail closed on systems lacking the required
 secure POSIX file-descriptor flags, rather than failing at module import.
+
+The complete selection batch (including later entries and duplicate IDs) is
+preflight-validated before either provider-bound reader is invoked.

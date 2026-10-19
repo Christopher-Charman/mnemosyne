@@ -108,6 +108,21 @@ class ReviewedSourcePreviewTests(unittest.TestCase):
                     review_reader=lambda x: calls.append("review"))
         self.assertEqual(calls,[])
 
+    def test_late_invalid_batch_never_reads_first_valid_source(self):
+        calls=[]
+        invalids=[replace(self.i,kind="invalid"),
+                  replace(self.i,record_id="other.record.123",review_id="other.review.123",
+                          source_ref="archive:private"),
+                  replace(self.i,record_id="other.record.123",review_id="other.review.123",
+                          source_ref=None),
+                  replace(self.i,record_id="other.record.123",review_id=self.i.review_id)]
+        for invalid in invalids:
+            with self.subTest(invalid=invalid),self.assertRaises(AdmissionError):
+                preview([self.i,invalid],
+                    source_reader=lambda ref:calls.append(("source",ref)),
+                    review_reader=lambda ref:calls.append(("review",ref)))
+        self.assertEqual(calls,[])
+
     def test_provider_exception_is_redacted(self):
         def failing_reader(ref):
             raise RuntimeError("PRIVATE_SECRET_IN_PROVIDER_ERROR")
