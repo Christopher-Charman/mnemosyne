@@ -14,8 +14,10 @@ write to the vault, issue GitHub approvals, or enable sync/embeddings.
 - The `gh api` caller must already possess the authorized private-repository
   credential. The adapter verifies the current repository owner, private
   visibility, comment/issue identity, numeric comment-author identity and
-  GitHub `OWNER` author association. A synthetic injected API is valid **only
-  for unit tests**, never proof of authenticated production operation.
+  GitHub `OWNER` author association. An injected API is a **synthetic test transport only**: its receipt
+  explicitly reports `SYNTHETIC_PROVIDER_UNBOUND`, never authenticated
+  production review. Valid GitHub usernames of any permitted length bind to
+  `github.owner.<numeric GitHub ID>` as the stable reviewer identifier.
 - Review comments use strict JSON with the exact fields below. No Markdown
   fences, note contents, personal history, access token or private bank records
   are published to public source code or CI. The reviewer timestamp is sourced

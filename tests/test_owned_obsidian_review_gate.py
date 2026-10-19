@@ -55,6 +55,7 @@ class ReviewGateTests(unittest.TestCase):
         self.assertEqual(result['count'],1);self.assertEqual(result['writes'],0)
         self.assertNotIn(self.text,str(result));self.assertEqual(self.note.read_bytes(),self.raw)
         self.assertEqual(result['source_scope'],'OWNER_VAULT_CURATED_ONLY')
+        self.assertEqual(result['review_binding'],'SYNTHETIC_PROVIDER_UNBOUND')
         self.assertEqual(len(self.calls),4)
     def test_late_invalid_selection_does_not_read_provider(self):
         bad=replace(self.sel,record_id='decision.review.002',review_id='review.ticket.002',source_ref='archive:private')
@@ -74,6 +75,18 @@ class ReviewGateTests(unittest.TestCase):
         with self.assertRaises(AdmissionError):self.run_gate(uid=os.getuid()+1)
         for ids in ({'review.ticket.001':0},{'invalid id':812345001}):
             with self.assertRaises(AdmissionError):self.gate(ids=ids)
+    def test_short_github_login_uses_stable_reviewer_id(self):
+        reader=GitHubIssueReviewReader(repository='abc/private',issue_number=ISSUE,
+          owner_login='abc',owner_user_id=4,comment_ids={self.sel.review_id:812345001},
+          api_get=lambda path:dict(self.comment,user={'id':4,'login':'abc'},
+            issue_url=f'https://api.github.com/repos/abc/private/issues/{ISSUE}')
+            if '/comments/' in path else {'full_name':'abc/private','private':True,
+              'owner':{'id':4,'login':'abc'}})
+        result=self.run_gate(gate=reader)
+        self.assertEqual(result['count'],1)
+        self.assertEqual(reader(self.sel.review_id).reviewer,'github.owner.4')
+        self.assertEqual(result['review_binding'],'SYNTHETIC_PROVIDER_UNBOUND')
+
     def test_private_repository_gate_precedes_vault_read(self):
         with patch('mnemosyne.integrations.owned_obsidian_review_gate.read_vault_note') as read:
             for private in (False,None):

@@ -99,7 +99,7 @@ class GitHubIssueReviewReader:
             if not isinstance(timestamp,str):raise ValueError('timestamp')
             return ReviewRead(review_id, data['source_ref'],data['source_version'],
                 data['source_sha256'],data['excerpt_sha256'],data['decision'],
-                data['classification'],data['bank'],self.owner_login,timestamp)
+                data['classification'],data['bank'],f'github.owner.{self.owner_user_id}',timestamp)
         except (ValueError,KeyError,TypeError,UnicodeError):
             raise AdmissionError("invalid independent review evidence") from None
 
@@ -135,6 +135,7 @@ def preview_reviewed_vault(selections: list[Selection], *, vault_root: Path,
         if reviews(item.review_id) != accepted[item.review_id]:
             raise AdmissionError('review changed during preview')
     reviews.assert_private_owner()
-    result['review_binding']='PRIVATE_GITHUB_OWNER_COMMENT_CURRENT_READ'
+    result['review_binding']=('PRIVATE_GITHUB_OWNER_COMMENT_CURRENT_READ'
+        if reviews.api_get is None else 'SYNTHETIC_PROVIDER_UNBOUND')
     result['source_scope']='OWNER_VAULT_CURATED_ONLY'
     return result
