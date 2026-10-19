@@ -32,3 +32,9 @@ Tests use disposable synthetic vaults; no live vault content was accessed.
 The caller must still independently authenticate current vault provenance and
 a distinct review-register decision. Note front matter or Canvas promotion
 alone does not establish that decision. No live ingestion or sync.
+
+The preview rejects source snapshots older than five minutes; the caller must
+re-read current source bytes and current review decision for every invocation.
+Invalid selection kinds/locators are rejected before provider calls; provider
+exception details are redacted. This freshness bound does not make a source
+reader or review record independently authenticated.

@@ -6,17 +6,18 @@ authority. No reads from real providers, writes, sync or model execution.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import hashlib
 import re
 from typing import Callable
 
-from mnemosyne.integrations.owned_architecture_bridge import AdmissionError, plan_projection
+from mnemosyne.integrations.owned_architecture_bridge import AdmissionError, KINDS, plan_projection
 
 _VERSION_LIB = re.compile(r"^v[1-9][0-9]{0,9}$")
 _VERSION_OBS = re.compile(r"^sha256:[0-9a-f]{64}$")
 _SHA = re.compile(r"^[0-9a-f]{64}$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$")
+MAX_SOURCE_SNAPSHOT_AGE = timedelta(minutes=5)
 
 
 @dataclass(frozen=True)
@@ -105,10 +106,18 @@ def preview(selections: list[Selection], *, source_reader: Callable,
         if (not isinstance(item.record_id, str) or not _ID.fullmatch(item.record_id)
             or not isinstance(item.review_id, str) or not _ID.fullmatch(item.review_id)
             or item.record_id in ids or item.review_id in review_ids
-            or not isinstance(item.excerpt, str) or not 1 <= len(item.excerpt) <= 1200):
+            or not isinstance(item.excerpt, str) or not 1 <= len(item.excerpt) <= 1200
+            or not isinstance(item.kind, str) or item.kind not in KINDS):
             raise AdmissionError("invalid selection identity/content")
-        source = source_reader(item.source_ref)
-        review = review_reader(item.review_id)
+        # Validate the untrusted locator before touching either bound provider.
+        source_kind(item.source_ref, "v1" if item.source_ref.startswith("library:/")
+                    else "sha256:" + "0" * 64)
+        try:
+            source = source_reader(item.source_ref)
+            review = review_reader(item.review_id)
+        except Exception:
+            # Provider exceptions can include private source contents/credentials.
+            raise AdmissionError("owner source/review reader unavailable") from None
         if not isinstance(source, SourceRead) or not isinstance(review, ReviewRead):
             raise AdmissionError("owner source/review read unavailable")
         if source.ref != item.source_ref:
@@ -127,6 +136,8 @@ def preview(selections: list[Selection], *, source_reader: Callable,
             raise AdmissionError("Obsidian immutable version differs from note bytes")
         excerpt_hash = hashlib.sha256(item.excerpt.encode("utf-8")).hexdigest()
         observed = utc(source.observed_at)
+        if datetime.now(timezone.utc) - observed > MAX_SOURCE_SNAPSHOT_AGE:
+            raise AdmissionError("source snapshot no longer current")
         reviewed = utc(review.reviewed_at)
         if (review.review_id != item.review_id
             or review.source_ref != source.ref

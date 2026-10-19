@@ -74,6 +74,31 @@ class ReviewedSourcePreviewTests(unittest.TestCase):
                     source=replace(self.s,ref=ref),review=replace(self.r,source_ref=ref))
         with self.assertRaises(AdmissionError):
             self.plan(source=replace(self.s,version="latest"))
+    def test_stale_source_snapshot_denied_even_when_review_matches(self):
+        old=stamp(-3600)
+        source=replace(self.s, observed_at=old)
+        review=replace(self.r, reviewed_at=stamp(-7200))
+        with self.assertRaisesRegex(AdmissionError, "no longer current"):
+            self.plan(source=source, review=review)
+
+    def test_invalid_selection_fails_before_provider_call(self):
+        calls=[]
+        for change in ({"kind":"not-a-kind"}, {"source_ref":"archive:secret"}):
+            with self.subTest(change=change), self.assertRaises(AdmissionError):
+                preview([replace(self.i,**change)],
+                    source_reader=lambda x: calls.append("source"),
+                    review_reader=lambda x: calls.append("review"))
+        self.assertEqual(calls,[])
+
+    def test_provider_exception_is_redacted(self):
+        def failing_reader(ref):
+            raise RuntimeError("PRIVATE_SECRET_IN_PROVIDER_ERROR")
+        with self.assertRaises(AdmissionError) as raised:
+            preview([self.i], source_reader=failing_reader,
+                    review_reader=lambda ref:self.r)
+        self.assertNotIn("PRIVATE_SECRET_IN_PROVIDER_ERROR",str(raised.exception))
+        self.assertIsNone(raised.exception.__cause__)
+
     def test_future_and_stale_review_denied(self):
         with self.assertRaises(AdmissionError):
             self.plan(source=replace(self.s,observed_at=stamp(-120)))
