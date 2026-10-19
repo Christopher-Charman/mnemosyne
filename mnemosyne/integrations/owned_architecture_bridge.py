@@ -25,12 +25,13 @@ KINDS = frozenset(
 )
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_ALLOWED_SOURCE_PREFIXES = ("library:/", "git:", "archive:", "runtime:")
+_ALLOWED_SOURCE_PREFIXES = ("library:/", "obsidian:", "git:", "archive:", "runtime:")
 _MAX_CONTENT = 8192
 _MAX_RECORDS = 256
 _MAX_LINE = 32768
 _SOURCE_TYPES = {
     "library:/": "canonical_document",
+    "obsidian:": "reviewed_note",
     "git:": "git_blob",
     "archive:": "archive_excerpt",
     "runtime:": "runtime_receipt",
