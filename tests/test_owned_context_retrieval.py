@@ -85,6 +85,49 @@ class TestFederation(unittest.TestCase):
                          "authority":"DERIVED_CONTEXT_ONLY","domain":"shared-architecture","bank":"evenio"}}
         r=build_context(request(),memory=StubMemory([row]),historical_packet=packet())
         self.assertEqual(r["mnemosyne"],[])
+    def test_owned_reader_bounded_expansion_is_trimmed_not_blocked(self):
+        import types
+        q=request()
+        raw=packet()
+        raw["records"]=[dict(raw["records"][0],message_id="m"+str(n))
+                        for n in range(6)]
+        raw.update({"automatic_session_injection":False,
+                    "instructions_from_archive_authoritative":False,
+                    "current_library_verified":False,"live_destination_verified":False})
+        receipt={"request_id":q["request_id"],"return_code":0,
+                 "state":"EXECUTED_READ_ONLY","output":raw}
+        mock=types.SimpleNamespace(returncode=0,stdout=json.dumps(receipt))
+        with patch("mnemosyne.integrations.owned_context_retrieval.subprocess.run",return_value=mock), \
+             patch.object(Path,"is_file",return_value=True), \
+             patch.object(Path,"is_symlink",return_value=False), \
+             patch("mnemosyne.integrations.owned_context_retrieval.os.access",return_value=True):
+            bounded=invoke_owned_reader(q["request_id"],q["query"],q["since"],q["until"],2)
+        self.assertEqual(len(bounded["records"]),2)
+        self.assertEqual(bounded["consumer_omitted_history"],4)
+        out=build_context(q,memory=StubMemory(),historical_packet=bounded)
+        self.assertEqual(len(out["historical"]),2)
+        self.assertEqual(out["consumer_omitted_history"],4)
+        self.assertFalse(out["automatic_agent_injection"])
+
+    def test_owned_reader_rejects_unbounded_expansion(self):
+        import types
+        q=request()
+        raw=packet()
+        raw["records"]=[dict(raw["records"][0],message_id="m"+str(n))
+                        for n in range(7)]
+        raw.update({"automatic_session_injection":False,
+                    "instructions_from_archive_authoritative":False,
+                    "current_library_verified":False,"live_destination_verified":False})
+        receipt={"request_id":q["request_id"],"return_code":0,
+                 "state":"EXECUTED_READ_ONLY","output":raw}
+        mock=types.SimpleNamespace(returncode=0,stdout=json.dumps(receipt))
+        with patch("mnemosyne.integrations.owned_context_retrieval.subprocess.run",return_value=mock), \
+             patch.object(Path,"is_file",return_value=True), \
+             patch.object(Path,"is_symlink",return_value=False), \
+             patch("mnemosyne.integrations.owned_context_retrieval.os.access",return_value=True):
+            with self.assertRaises(ContextBoundaryError):
+                invoke_owned_reader(q["request_id"],q["query"],q["since"],q["until"],2)
+
     def test_reject_unverified_reader_packet(self):
         import types
         receipt={"request_id":"context-test-20261014-001","return_code":0,
