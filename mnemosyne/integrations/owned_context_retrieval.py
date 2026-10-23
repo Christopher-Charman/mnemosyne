@@ -91,8 +91,15 @@ def invoke_owned_reader(rid, query, since, until, count, reader=None):
         or packet.get("current_library_verified") is not False
         or packet.get("live_destination_verified") is not False
         or not isinstance(packet.get("records"), list)
-        or len(packet["records"]) > count):
+        or len(packet["records"]) > min(20, count * 3)):
         raise ContextBoundaryError("historical packet exceeds provenance boundary")
+    # The owned session-context producer returns up to three times the requested
+    # limit for relevance ranking. Preserve its cap; expose only the requested
+    # prefix to downstream consumers. No new authority is admitted.
+    observed = len(packet["records"])
+    packet = dict(packet)
+    packet["records"] = packet["records"][:count]
+    packet["consumer_omitted_history"] = observed - len(packet["records"])
     return packet
 
 def _historical(packet, limit):
@@ -175,6 +182,7 @@ def build_context(request, *, memory=None, historical_packet=None):
         "current_project_authority_verified": False, "automatic_agent_injection": False,
         "memory_ingestion": False, "sync_enabled": False,
         "historical": historical, "mnemosyne": derived,
+        "consumer_omitted_history": packet.get("consumer_omitted_history", 0),
         "required_next_evidence": ["CURRENT_DIRECT_SOURCE_READBACK",
                                    "EXACT_RUNTIME_AUTHORITY", "POST_INDEX_CHAT_COVERAGE"],
     }
