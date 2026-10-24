@@ -305,10 +305,14 @@ class SyncAdapter:
             mode="push",
             api_key=self.auth_token or None,
         )
+        if not isinstance(result, dict):
+            return json.dumps({"status": "error", "error": "Invalid sync engine response."})
         if result.get("errors"):
             return json.dumps({"status": "error", "error": "; ".join(result["errors"])})
+        if not isinstance(result.get("push"), dict):
+            return json.dumps({"status": "error", "error": "Push result missing from sync engine."})
 
-        push = result.get("push") or {}
+        push = result["push"]
         accepted = push.get("accepted", 0)
         cursor = ""
         discovered = push.get("discovered") or {}
@@ -341,10 +345,14 @@ class SyncAdapter:
             mode="pull",
             api_key=self.auth_token or None,
         )
+        if not isinstance(result, dict):
+            return json.dumps({"status": "error", "error": "Invalid sync engine response."})
         if result.get("errors"):
             return json.dumps({"status": "error", "error": "; ".join(result["errors"])})
+        if not isinstance(result.get("pull"), dict):
+            return json.dumps({"status": "error", "error": "Pull result missing from sync engine."})
 
-        pull = result.get("pull") or {}
+        pull = result["pull"]
         cursor = self._pull_cursor(result.get("remote"))
         if (
             not pull.get("accepted")
