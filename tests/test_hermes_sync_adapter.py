@@ -237,3 +237,30 @@ def test_sync_tool_reports_joined_engine_errors(sync_module, tool_name):
         "status": "error",
         "error": "first sync failure; second sync failure",
     }
+
+
+@pytest.mark.parametrize(("tool_name", "phase"), [
+    ("mnemosyne_sync_push", "push"),
+    ("mnemosyne_sync_pull", "pull"),
+])
+@pytest.mark.parametrize("engine_result", [
+    {},
+    {"push": None, "pull": None, "errors": []},
+    None,
+])
+def test_missing_sync_phase_never_reports_false_empty_success(
+    sync_module, tool_name, phase, engine_result
+):
+    class _IncompleteEngine:
+        def sync_with(self, *_args, **_kwargs):
+            return engine_result
+
+    adapter = sync_module.SyncAdapter.__new__(sync_module.SyncAdapter)
+    adapter._engine = _IncompleteEngine()
+    adapter._error = None
+    adapter.remote = "https://sync.example"
+    adapter.auth_token = ""
+
+    response = json.loads(adapter.handle_tool_call(tool_name, {}))
+    assert response["status"] == "error"
+    assert "engine" in response["error"].lower()
