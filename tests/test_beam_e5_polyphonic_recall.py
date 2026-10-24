@@ -637,3 +637,33 @@ class TestE5ResultShape:
         assert b_id not in ids, (
             "foreign-session row sharing query terms leaked into session scope"
         )
+
+
+def test_polyphonic_results_emit_persistent_provenance_once(
+    temp_db, monkeypatch, disable_llm
+):
+    """Normal polyphonic recall has the same durable audit as linear recall."""
+    monkeypatch.setenv("MNEMOSYNE_POLYPHONIC_RECALL", "1")
+    monkeypatch.setenv("MNEMOSYNE_RECALL_PROVENANCE", "1")
+    beam = BeamMemory(session_id="poly-audit", db_path=temp_db)
+    observed = []
+    monkeypatch.setattr(
+        "mnemosyne.core.beam.append_recall_provenance",
+        lambda db, query, rows, top_k: observed.append((db, query, rows, top_k)),
+    )
+    monkeypatch.setattr(
+        beam, "_recall_polyphonic",
+        lambda *args, **kwargs: [{"id": "mem:one", "score": 0.8,
+                                  "voice_scores": {"vector": 0.8}}],
+    )
+    normal = beam.recall("keyword semantic", top_k=3)
+    assert len(observed) == 1
+    assert observed[0][1] == "keyword semantic"
+    assert observed[0][2] == normal
+    assert observed[0][3] == 3
+
+    beam.recall("keyword semantic", top_k=3, explain=True)
+    assert len(observed) == 1, "explain response already embeds its provenance"
+
+    beam.recall("keyword semantic", top_k=3, _skip_provenance=True)
+    assert len(observed) == 1, "enhanced recall suppresses duplicate audit"

@@ -9360,7 +9360,15 @@ class BeamMemory:
                         "reason": "polyphonic recall explain is not implemented in v1; inspect per-result voice_scores instead.",
                     },
                 }
-            return _cap_recall_results(poly_results)
+            final_poly_results = _cap_recall_results(poly_results)
+            # Both scoring paths must preserve the same query-to-memory audit.
+            # Explain calls already contain their own trace; enhanced recall
+            # sets _skip_provenance to avoid duplicated records.
+            if (not _skip_provenance
+                    and os.environ.get("MNEMOSYNE_RECALL_PROVENANCE", "0") == "1"):
+                append_recall_provenance(str(self.db_path), query,
+                                         final_poly_results, top_k)
+            return final_poly_results
 
         results = []
         query_lower = query.lower()
