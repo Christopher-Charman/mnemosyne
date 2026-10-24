@@ -364,12 +364,10 @@ def test_concurrent_appends_never_interleave(temp_db, monkeypatch):
     )
 
 
-def test_polyphonic_recall_writes_no_provenance_line(temp_db, monkeypatch):
-    """Under MNEMOSYNE_POLYPHONIC_RECALL=1, recall() returns the engine's
-    poly_results before the linear provenance hook runs. The documented
-    exclusion must hold even with the provenance flag enabled. Uses an
-    injected fake engine (same idiom as test_e3a3_cross_tier_dedup) so
-    the test never depends on embeddings backends."""
+def test_polyphonic_recall_writes_provenance_line(temp_db, monkeypatch):
+    """Polyphonic recall persists the same bounded provenance as linear recall.
+
+    An injected engine avoids dependencies on embedding backends."""
     from mnemosyne.core.polyphonic_recall import PolyphonicResult
 
     monkeypatch.setenv("MNEMOSYNE_POLYPHONIC_RECALL", "1")
@@ -402,4 +400,8 @@ def test_polyphonic_recall_writes_no_provenance_line(temp_db, monkeypatch):
 
     assert engine_calls, "polyphonic engine path must have run"
     assert results, "polyphonic results must be returned to caller"
-    assert not _provenance_file(temp_db).exists()
+    assert _provenance_file(temp_db).exists()
+    record = _read_last_record(temp_db)
+    assert record["query"] == "pluto"
+    assert record["top_k"] == 5
+    assert real_id in {row["id"] for row in record["results"]}
