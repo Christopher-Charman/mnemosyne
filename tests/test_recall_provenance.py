@@ -78,7 +78,7 @@ def test_flag_off_by_default_writes_no_file(temp_db, monkeypatch):
     beam.remember("pluto gamma provenance fact three", source="test")
     beam.recall("pluto", top_k=5)
 
-    assert _provenance_file(temp_db).exists()
+    assert not _provenance_file(temp_db).exists()
     record = _read_last_record(temp_db)
     assert record["query"] == "pluto"
     assert record["top_k"] == 5
@@ -404,4 +404,8 @@ def test_polyphonic_recall_writes_provenance_line(temp_db, monkeypatch):
 
     assert engine_calls, "polyphonic engine path must have run"
     assert results, "polyphonic results must be returned to caller"
-    assert not _provenance_file(temp_db).exists()
+    assert _provenance_file(temp_db).exists()
+    record = _read_last_record(temp_db)
+    assert record["query"] == "pluto"
+    assert record["top_k"] == 5
+    assert real_id in {row["id"] for row in record["results"]}
