@@ -1200,3 +1200,74 @@ def test_sync_with_drains_more_than_5000_opaque_events(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+@pytest.mark.parametrize("fail_code,expected_calls", [(429, 3), (503, 1)])
+def test_http_rate_limit_retries_only_429(memory, monkeypatch, fail_code, expected_calls):
+    """Engram capped backoff does not replay uncertain non-429 outcomes."""
+    import io
+    import urllib.error
+    import urllib.request
+    import time
+
+    engine = SyncEngine(memory, device_id="rate-limited", allow_unscoped_sync=True)
+    calls = []
+    sleeps = []
+
+    def fail(_request, **_kw):
+        calls.append(1)
+        raise urllib.error.HTTPError(
+            "https://relay.invalid/sync/pull", fail_code, "upstream busy",
+            {"Retry-After": "0"}, io.BytesIO(b"rate limited")
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", fail)
+    monkeypatch.setattr(time, "sleep", lambda delay: sleeps.append(delay))
+    result = engine.sync_with("https://relay.invalid", mode="pull")
+
+    assert len(calls) == expected_calls
+    assert len(sleeps) == (2 if fail_code == 429 else 0)
+    assert len(result["errors"]) == 1
+    assert "HTTP " + str(fail_code) in result["errors"][0]
+
+
+def test_rate_limited_pull_succeeds_without_duplicate_cursor_advancement(
+    memory, monkeypatch
+):
+    import io
+    import urllib.error
+    import urllib.request
+    import time
+
+    engine = SyncEngine(memory, device_id="rate-limited-success",
+                        allow_unscoped_sync=True)
+    calls = []
+    delays = []
+
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            return False
+        def read(self, size=-1):
+            return json.dumps({
+                "events": [], "next_cursor": None, "has_more": False,
+            }).encode()
+
+    def respond(_request, **_kw):
+        calls.append(1)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(
+                "https://relay.invalid/sync/pull", 429, "rate limited",
+                {"Retry-After": "0"}, io.BytesIO(b"rate limited")
+            )
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", respond)
+    monkeypatch.setattr(time, "sleep", lambda delay: delays.append(delay))
+    result = engine.sync_with("https://relay.invalid", mode="pull")
+
+    assert result["errors"] == []
+    assert len(calls) == 3
+    assert delays == [0.0, 0.0]
+    assert result["pull"]["events_fetched"] == 0

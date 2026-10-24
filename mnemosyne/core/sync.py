@@ -1969,22 +1969,40 @@ class SyncEngine:
             request = _request.Request(
                 url, data=data, headers=request_headers, method="POST"
             )
-            try:
-                with _request.urlopen(request, timeout=30) as response:
-                    return json.loads(
-                        self._read_bounded_http_response(response).decode("utf-8")
+            # Engram capped-backoff donor: retry only explicit rate limits.
+            # Network errors and other HTTP failures retain unknown-outcome
+            # semantics and are never blindly replayed. The same serialized
+            # batch/event IDs are used for all three bounded attempts.
+            for attempt in range(3):
+                try:
+                    with _request.urlopen(request, timeout=30) as response:
+                        return json.loads(
+                            self._read_bounded_http_response(response).decode("utf-8")
+                        )
+                except _error.HTTPError as exc:
+                    if exc.code == 429 and attempt < 2:
+                        import time
+                        delay = min(0.25 * (2 ** attempt), 2.0)
+                        retry_after = (exc.headers or {}).get("Retry-After")
+                        if retry_after is not None:
+                            try:
+                                delay = min(max(0.0, float(retry_after)), 2.0)
+                            except (ValueError, TypeError):
+                                pass
+                        exc.close()
+                        time.sleep(delay)
+                        continue
+                    body_text = (
+                        self._read_bounded_http_response(exc).decode(
+                            "utf-8", errors="replace"
+                        )
+                        if exc.fp
+                        else str(exc)
                     )
-            except _error.HTTPError as exc:
-                body_text = (
-                    self._read_bounded_http_response(exc).decode(
-                        "utf-8", errors="replace"
-                    )
-                    if exc.fp
-                    else str(exc)
-                )
-                result["errors"].append(f"HTTP {exc.code} on {endpoint}: {body_text}")
-            except Exception as exc:
-                result["errors"].append(f"{endpoint}: {exc}")
+                    result["errors"].append(f"HTTP {exc.code} on {endpoint}: {body_text}")
+                except Exception as exc:
+                    result["errors"].append(f"{endpoint}: {exc}")
+                return None
             return None
 
         page_size = 1000
