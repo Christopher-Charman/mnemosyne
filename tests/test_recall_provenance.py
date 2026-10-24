@@ -79,10 +79,6 @@ def test_flag_off_by_default_writes_no_file(temp_db, monkeypatch):
     beam.recall("pluto", top_k=5)
 
     assert not _provenance_file(temp_db).exists()
-    record = _read_last_record(temp_db)
-    assert record["query"] == "pluto"
-    assert record["top_k"] == 5
-    assert real_id in {row["id"] for row in record["results"]}
 
 
 def test_flag_garbage_value_treated_as_off(temp_db, monkeypatch):
