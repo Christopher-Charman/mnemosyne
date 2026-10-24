@@ -272,10 +272,21 @@ class SyncAdapter:
             })
 
         try:
-            if tool_name == "mnemosyne_sync_push":
-                return self._handle_push()
-            elif tool_name == "mnemosyne_sync_pull":
-                return self._handle_pull()
+            if tool_name in ("mnemosyne_sync_push", "mnemosyne_sync_pull"):
+                # Engram single-flight donor: never overlap two sync cycles
+                # on a shared engine/cursor. A failed call releases the lock.
+                lock = getattr(self, "_lock", None)
+                if lock is None:
+                    lock = threading.Lock()
+                    self._lock = lock
+                if not lock.acquire(blocking=False):
+                    return json.dumps({"status": "busy", "error": "Sync already in progress"})
+                try:
+                    if tool_name == "mnemosyne_sync_push":
+                        return self._handle_push()
+                    return self._handle_pull()
+                finally:
+                    lock.release()
             elif tool_name == "mnemosyne_sync_status":
                 return self._handle_status()
             else:
