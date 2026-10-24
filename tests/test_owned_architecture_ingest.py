@@ -93,6 +93,33 @@ class OwnedIngestTests(unittest.TestCase):
         self.assertEqual(self.rows("working_memory"), 1)
         self.assertEqual(self.rows("owned_architecture_ingest_receipts"), 1)
 
+
+    def test_replayed_record_must_match_persisted_content(self):
+        self.apply([self.record()])
+        mid = self.memory.conn.execute(
+            "SELECT memory_id FROM owned_architecture_ingest_receipts"
+        ).fetchone()[0]
+        self.memory.conn.execute(
+            "UPDATE working_memory SET content=? WHERE id=?",
+            ("Modified after ingestion", mid),
+        )
+        self.memory.conn.commit()
+        with self.assertRaisesRegex(AdmissionError, "committed memory drift"):
+            self.apply([self.record()])
+
+    def test_replayed_record_must_match_verified_provenance(self):
+        self.apply([self.record()])
+        mid = self.memory.conn.execute(
+            "SELECT memory_id FROM owned_architecture_ingest_receipts"
+        ).fetchone()[0]
+        self.memory.conn.execute(
+            "UPDATE working_memory SET source=? WHERE id=?",
+            ("unverified-local", mid),
+        )
+        self.memory.conn.commit()
+        with self.assertRaisesRegex(AdmissionError, "committed memory drift"):
+            self.apply([self.record()])
+
     def test_restart_replays(self):
         self.apply([self.record()])
         self.memory = Mnemosyne(

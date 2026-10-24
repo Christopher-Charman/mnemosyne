@@ -173,11 +173,22 @@ def ingest_verified_records(
             if existing is not None:
                 if existing[0] != fingerprint:
                     raise AdmissionError("record replay conflicts with committed provenance")
-                still_present = conn.execute(
-                    "SELECT 1 FROM working_memory WHERE id=?", (existing[1],)
+                stored = conn.execute(
+                    "SELECT content,source,scope,metadata_json FROM working_memory WHERE id=?",
+                    (existing[1],),
                 ).fetchone()
-                if still_present is None:
+                if stored is None:
                     raise AdmissionError("committed memory missing; explicit reconciliation required")
+                try:
+                    saved = json.loads(stored[3])
+                except (TypeError, ValueError):
+                    raise AdmissionError("committed memory metadata unreadable") from None
+                expected = dict(memory["metadata"])
+                expected.update(verified_source=True, verification_method=proof["method"])
+                if (stored[0] != memory["content"] or stored[1] != memory["source"]
+                    or stored[2] != memory["scope"] or not isinstance(saved, dict)
+                    or any(saved.get(k) != v for k, v in expected.items())):
+                    raise AdmissionError("committed memory drift; explicit reconciliation required")
                 replayed += 1
                 continue
 
