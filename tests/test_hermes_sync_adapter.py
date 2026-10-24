@@ -264,3 +264,35 @@ def test_missing_sync_phase_never_reports_false_empty_success(
     response = json.loads(adapter.handle_tool_call(tool_name, {}))
     assert response["status"] == "error"
     assert "engine" in response["error"].lower()
+
+
+def test_single_flight_reentrant_pull_and_exception_release(sync_module):
+    """Engram donor guard prevents concurrent cursor mutation and never wedges."""
+    import threading
+    adapter = sync_module.SyncAdapter.__new__(sync_module.SyncAdapter)
+    adapter._engine = object()
+    adapter._error = None
+    adapter._lock = threading.Lock()
+
+    calls = []
+
+    def push():
+        calls.append("push")
+        blocked = json.loads(adapter.handle_tool_call("mnemosyne_sync_pull", {}))
+        assert blocked["status"] == "busy"
+        raise RuntimeError("injected dispatch failure")
+
+    def pull():
+        calls.append("pull")
+        return json.dumps({"status": "ok", "pulled": 1})
+
+    adapter._handle_push = push
+    adapter._handle_pull = pull
+
+    failure = json.loads(adapter.handle_tool_call("mnemosyne_sync_push", {}))
+    assert failure["status"] == "error"
+    assert "injected dispatch failure" in failure["error"]
+    assert json.loads(adapter.handle_tool_call("mnemosyne_sync_pull", {})) == {
+        "status": "ok", "pulled": 1
+    }
+    assert calls == ["push", "pull"]
