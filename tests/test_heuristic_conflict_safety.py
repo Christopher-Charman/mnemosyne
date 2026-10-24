@@ -75,7 +75,8 @@ def _make_similar_pair(beam):
     )
     for mid, vec in ((id_a, vec_a), (id_b, vec_b)):
         cur.execute(
-            "INSERT INTO memory_embeddings (memory_id, embedding_json) VALUES (?, ?)",
+            "INSERT INTO memory_embeddings (memory_id, embedding_json) VALUES (?, ?) "
+            "ON CONFLICT(memory_id) DO UPDATE SET embedding_json=excluded.embedding_json",
             (mid, json.dumps([float(x) for x in vec])),
         )
     beam.conn.commit()
