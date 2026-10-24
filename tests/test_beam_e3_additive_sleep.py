@@ -19,7 +19,7 @@ experiment.
 
 import sqlite3
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -295,10 +295,13 @@ class TestE3AdditiveSleep:
         beam.sleep(dry_run=False)
 
         rows = _consolidated_rows(temp_db, "s1")
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         for row_id, consolidated_at in rows:
             parsed = datetime.fromisoformat(consolidated_at)
-            # Within 60s of NOW (generous for CI clock skew).
+            # Stored naive timestamps are UTC, not the host's local timezone.
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            # Within 60s of UTC now (generous for CI clock skew).
             delta = abs((now - parsed).total_seconds())
             assert delta < 60, (
                 f"consolidated_at for {row_id} is {consolidated_at}, "
